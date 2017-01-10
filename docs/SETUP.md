@@ -27,6 +27,7 @@
   - [Github setup](#github-setup)
   - [Issuing Money](#issuing-money)
   - [systemd setup](#systemd-setup)
+  - [Forever setup](#forever-setup)
 
 # ILP Kit installation
 
@@ -117,9 +118,7 @@ dependencies with the following commands:
 $ cd # start in your home folder
 $ git clone https://github.com/interledgerjs/ilp-kit
 $ cd ilp-kit
-$ npm install # this fails on the `node-gyp rebuild` step, due to a known error
-$ npm rebuild node-sass # but running this will remedy any problems
-$ npm run build
+$ npm install
 ```
 
 # Domain setup
@@ -457,4 +456,123 @@ sudo systemctl enable ilp-kit
 You can check the logs with this command
 ```
 journalctl -u ilp-kit -f -n 500
+```
+## Run with Forever
+This is an alternative to setting up systemd.
+
+Install `forever`, if you don't have it already:
+``` 
+sudo npm install forever -g
+```
+
+Create a site.sh file 
+```
+nano site.sh
+```
+
+with the contents
+```
+#!/bin/bash
+WorkingDir=/home/$USER/ilp-kit
+start() {
+    echo -n "Starting site..."
+    forever start  --workingDir=$WorkingDir  -c "npm start" -a --uid ledger $WorkingDir
+    return 0
+}
+
+stop() {
+    forever stop 0
+    killall -9 node
+    return 0
+}
+
+log() {
+    forever logs  0 -f
+    return 0
+}
+
+stash() {
+    git status --porcelain | grep "^." >/dev/null;
+    if [ $? -eq 0 ]
+    then
+      if git stash save -u "git-update on `date`";
+    then
+      stash=1;
+    fi
+    fi
+}
+
+unstash() {
+    if [ $stash -eq 1 ]
+    then
+      git stash pop;
+    fi
+}
+
+update(){
+    stash=0;
+    stash;
+    branch=`git branch | grep "\*" | cut -d " " -f 2-9`;
+    if [ "$branch" == "master" ]
+    then
+      git pull origin master;
+    else
+    git checkout master;
+    git pull origin master;
+    git checkout "$branch";
+    git rebase master;
+    fi
+    unstash;
+}
+
+case "$1" in
+    start)
+    start
+    ;;
+    restart)
+    stop
+    start
+    ;;
+    update)
+    stop
+    update
+    start
+    ;;
+    log)
+    log
+    ;;
+    stop)
+    stop
+    ;;
+    *)
+    echo $"Usage: $0 {update|start|stop|restart|log}"
+    exit 2
+
+    esac
+```
+where `WorkingDir` is the path to your `ilp-kit` folder. Please change /home/$USER/ilp-kit to your ILP kit's working directory, (e.g. /home/$USER/ilp-kit).
+
+Set site.sh to executable 
+
+```
+chmod +x site.sh
+```
+
+Update Your ILP Kit
+```
+./site.sh update
+```
+
+Start your ILP Kit
+```
+./site.sh start
+```
+Restart ILP Kit
+```
+./site.sh restart
+```
+
+You can check the logs 
+```
+./site.sh log
 ```
